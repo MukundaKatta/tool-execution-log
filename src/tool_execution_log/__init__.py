@@ -13,6 +13,19 @@ from typing import Any, Optional
 
 @dataclass
 class ExecutionEntry:
+    """A single recorded tool execution.
+
+    Attributes:
+        entry_id: Unique identifier of the form ``"{tool_name}-{n}"``.
+        tool_name: Name of the tool that was executed.
+        args: Arguments passed to the tool.
+        result: Value returned by the tool (``None`` when the call errored).
+        error: Error message if the call failed, otherwise ``None``.
+        duration_ms: Wall-clock execution time in milliseconds.
+        timestamp: Unix epoch time (seconds) when the entry was recorded.
+        tags: Free-form labels attached to the entry.
+    """
+
     entry_id: str
     tool_name: str
     args: dict[str, Any]
@@ -24,9 +37,11 @@ class ExecutionEntry:
 
     @property
     def ok(self) -> bool:
+        """``True`` when the execution completed without an error."""
         return self.error is None
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a plain-``dict`` representation of the entry."""
         return {
             "entry_id": self.entry_id,
             "tool_name": self.tool_name,
@@ -39,10 +54,16 @@ class ExecutionEntry:
         }
 
     def to_json(self) -> str:
+        """Serialize the entry to a single-line JSON string."""
         return json.dumps(self.to_dict())
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "ExecutionEntry":
+        """Reconstruct an :class:`ExecutionEntry` from a ``dict``.
+
+        Missing optional keys fall back to sensible defaults so that
+        partially-formed records (e.g. from older log files) still load.
+        """
         return ExecutionEntry(
             entry_id=d["entry_id"],
             tool_name=d["tool_name"],
@@ -57,6 +78,18 @@ class ExecutionEntry:
 
 @dataclass
 class ToolStats:
+    """Aggregate latency and error statistics for a tool.
+
+    Attributes:
+        tool_name: Name of the tool the stats describe (``"_all_"`` for the
+            combined statistics across every tool).
+        calls: Total number of recorded executions.
+        errors: Number of executions that ended with an error.
+        total_ms: Sum of all execution durations in milliseconds.
+        min_ms: Fastest recorded execution in milliseconds.
+        max_ms: Slowest recorded execution in milliseconds.
+    """
+
     tool_name: str
     calls: int = 0
     errors: int = 0
@@ -66,13 +99,16 @@ class ToolStats:
 
     @property
     def avg_ms(self) -> float:
+        """Mean execution time in milliseconds (``0.0`` when no calls)."""
         return self.total_ms / self.calls if self.calls else 0.0
 
     @property
     def error_rate(self) -> float:
+        """Fraction of calls that errored, in ``[0.0, 1.0]``."""
         return self.errors / self.calls if self.calls else 0.0
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a plain-``dict`` summary, including derived fields."""
         return {
             "tool_name": self.tool_name,
             "calls": self.calls,
@@ -100,6 +136,15 @@ class ToolExecutionLog:
     """
 
     def __init__(self, path: Optional[str] = None) -> None:
+        """Create a log.
+
+        Args:
+            path: Optional path to a JSONL file. When provided, every recorded
+                entry is appended to the file, and any existing entries in the
+                file are loaded into memory on construction. A leading ``~`` is
+                expanded to the user's home directory. When ``None``, the log is
+                kept purely in memory.
+        """
         self._path = os.path.expanduser(path) if path else None
         self._lock = threading.Lock()
         self._entries: list[ExecutionEntry] = []
@@ -116,6 +161,9 @@ class ToolExecutionLog:
                         self._entries.append(ExecutionEntry.from_dict(json.loads(line)))
         except (OSError, json.JSONDecodeError):
             pass
+        # Advance the counter past any loaded entries so that new entries do
+        # not receive ``entry_id`` values that collide with persisted ones.
+        self._counter = len(self._entries)
 
     def _append(self, entry: ExecutionEntry) -> None:
         if self._path:
@@ -168,6 +216,7 @@ class ToolExecutionLog:
             return [e for e in self._entries if e.timestamp >= timestamp]
 
     def by_tag(self, tag: str) -> list[ExecutionEntry]:
+        """All entries carrying the given tag."""
         with self._lock:
             return [e for e in self._entries if tag in e.tags]
 
@@ -202,6 +251,7 @@ class ToolExecutionLog:
             return count
 
     def __len__(self) -> int:
+        """Number of entries currently held in memory."""
         with self._lock:
             return len(self._entries)
 
