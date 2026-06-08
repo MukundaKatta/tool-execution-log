@@ -1,8 +1,0 @@
-README.md
-pyproject.toml
-src/tool_execution_log/__init__.py
-src/tool_execution_log.egg-info/PKG-INFO
-src/tool_execution_log.egg-info/SOURCES.txt
-src/tool_execution_log.egg-info/dependency_links.txt
-src/tool_execution_log.egg-info/top_level.txt
-tests/test_tool_execution_log.py
