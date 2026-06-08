@@ -1,5 +1,4 @@
 import time
-import pytest
 from tool_execution_log import ToolExecutionLog, ExecutionEntry, ToolStats
 
 
@@ -137,6 +136,7 @@ def test_entry_to_json():
     e = log.record("tool")
     j = e.to_json()
     import json
+
     parsed = json.loads(j)
     assert parsed["tool_name"] == "tool"
 
@@ -158,7 +158,9 @@ def test_entry_from_dict():
 
 
 def test_stats_to_dict():
-    s = ToolStats(tool_name="x", calls=2, errors=1, total_ms=100.0, min_ms=40.0, max_ms=60.0)
+    s = ToolStats(
+        tool_name="x", calls=2, errors=1, total_ms=100.0, min_ms=40.0, max_ms=60.0
+    )
     d = s.to_dict()
     assert d["calls"] == 2
     assert d["error_rate"] == 0.5
@@ -172,3 +174,24 @@ def test_persistence(tmp_path):
     log2 = ToolExecutionLog(path)
     assert len(log2) == 1
     assert log2._entries[0].tool_name == "search"
+
+
+def test_entry_ids_unique_after_reload(tmp_path):
+    """Reloading from disk must not reset the id counter and cause collisions."""
+    path = str(tmp_path / "log.jsonl")
+    log1 = ToolExecutionLog(path)
+    log1.record("a", duration_ms=1.0)
+    log1.record("b", duration_ms=2.0)
+
+    log2 = ToolExecutionLog(path)
+    log2.record("a", duration_ms=3.0)
+    log2.record("b", duration_ms=4.0)
+
+    ids = [e.entry_id for e in log2._entries]
+    assert len(ids) == len(set(ids)), f"duplicate entry ids: {ids}"
+
+
+def test_by_tag_no_match():
+    log = ToolExecutionLog()
+    log.record("a", tags=["x"])
+    assert log.by_tag("missing") == []

@@ -1,13 +1,14 @@
 """
 tool-execution-log: Structured JSONL log of tool executions with per-tool stats.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
 
@@ -19,7 +20,7 @@ class ExecutionEntry:
     result: Any
     error: Optional[str]
     duration_ms: float
-    timestamp: float          # Unix epoch
+    timestamp: float  # Unix epoch
     tags: list[str]
 
     @property
@@ -116,6 +117,9 @@ class ToolExecutionLog:
                         self._entries.append(ExecutionEntry.from_dict(json.loads(line)))
         except (OSError, json.JSONDecodeError):
             pass
+        # Restore the counter so freshly recorded entries get unique ids
+        # instead of colliding with the ones just loaded from disk.
+        self._counter = len(self._entries)
 
     def _append(self, entry: ExecutionEntry) -> None:
         if self._path:
@@ -158,7 +162,8 @@ class ToolExecutionLog:
         """All error entries, optionally filtered by tool."""
         with self._lock:
             return [
-                e for e in self._entries
+                e
+                for e in self._entries
                 if not e.ok and (tool_name is None or e.tool_name == tool_name)
             ]
 
